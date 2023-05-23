@@ -1,34 +1,21 @@
 import cv2
-import argparse
-import imutils
-from vidgear.gears import CamGear
-from mylib.centroidtracker import CentroidTracker
+
 import dlib
 import numpy as np
+
+import imutils
 from imutils.video import FPS
+from vidgear.gears import CamGear
+from mylib.centroidtracker import CentroidTracker
+from mylib.trackableobject import TrackableObject
 
-# construct the argument parse and parse the arguments
-ap = argparse.ArgumentParser()
-ap.add_argument("-p", "--prototxt", required=False,type=str, default="mobilenet_ssd/MobileNetSSD_deploy.prototxt",
-    help="path to Caffe 'deploy' prototxt file")
-ap.add_argument("-m", "--model", required=False,type=str, default="mobilenet_ssd/MobileNetSSD_deploy.caffemodel",
-    help="path to Caffe pre-trained model")
-ap.add_argument("-i", "--input", type=str,
-    help="path to optional input video file")
-ap.add_argument("-o", "--output", type=str,
-    help="path to optional output video file")
+#import các biến từ file config.py
+from mylib.config import args
+from mylib.config import LABELNAME
 
-ap.add_argument("-c", "--confidence", type=float, default=0.4, # confidence default 0.4
-    help="minimum probability to filter weak detections")
-ap.add_argument("-s", "--skip-frames", type=int, default=10,
-    help="# of skip frames between detections")
-args = vars(ap.parse_args())
-
-# danh sách các class label mà mô hình hiện tại đã được train
-CLASSES = ["background", "aeroplane", "bicycle", "bird", "boat",
-    "bottle", "bus", "car", "cat", "chair", "cow", "diningtable",
-    "dog", "horse", "motorbike", "person", "pottedplant", "sheep",
-    "sofa", "train", "tvmonitor"]
+#duong link video
+src = "https://youtu.be/d0mcaxedv_4"
+stream_mode = True   #True nếu muốn lấy video từ internet, False nếu muốn lấy video từ local
 
 def main():
     totalFrames = 0
@@ -41,12 +28,13 @@ def main():
 
     # list of trackers for tracking process
     trackers = []
+    trackablObject={}
     # tạo đối tượng dùng để tracking
     ct = CentroidTracker(maxDisappeared=40, maxDistance=50)
 
     #khởi tạo đối tượng FPS để đo tốc độ xử lý
     fps = FPS().start()
-    vd = CamGear(source = "https://youtu.be/d0mcaxedv_4", stream_mode = True).start()
+    vd = CamGear(source = src, stream_mode = stream_mode).start()
 
 
     # vd = cv2.VideoCapture("https://youtu.be/T2-3J2hWjbk")
@@ -62,8 +50,12 @@ def main():
         if W == 0 or H == 0:
             (H, W) = frame.shape[:2]
 
+        rects = [] # lưu tọa độ bounding box của các vật thể
+        objects = {} # là từ điển chứa danh sách object được tracking
+
         # nhận diện vật thể
         if totalFrames % args["skip_frames"] == 0:
+            print(1)
             trackers = [] # luư thông tin các đối tượng đã tracking
 
             # tạo blob từ frame để truyền vào Net để nhận diện object
@@ -79,7 +71,7 @@ def main():
                     index = int(detections[0, 0, i, 1])
 
                     # lọc các detections có label là person
-                    if CLASSES[index] != "person":
+                    if LABELNAME[index] != "person":
                         continue
 
                     # tính toán tọa độ bounding box cho object
@@ -98,6 +90,7 @@ def main():
 
         #tracking các vật thể
         else:
+            print(222222222222)
             # lặp qua các tracker
             for tracker in trackers:
                 # cập nhật tracker và lấy tọa độ bounding box mới
@@ -113,6 +106,42 @@ def main():
                 # vẽ bounding box
                 cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
 
+                rects.append((startX, startY, endX, endY))
+
+        objects = ct.update(rects)
+
+        #lap qua cac doi tuong tracking
+        for(objectID, centroid) in objects.items():
+
+            to = trackablObject.get(objectID, None)
+
+            if to is None:
+                to = TrackableObject(objectID, centroid)
+
+            else:
+                y = [c[1] for c in to.centroids]
+                direction = centroid[1] - np.mean(y)
+                to.centroids.append(centroid)
+
+                if not to.counted:
+                    if direction < 0 and centroid[1] < H // 2:
+                        to.counted = True
+
+                    elif direction > 0 and centroid[1] > H // 2:
+                        to.counted = True
+            
+
+            trackablObject[objectID] = to
+
+            text = "ID {}".format(objectID)
+
+            cv2.putText(frame, text, (centroid[0] - 10, centroid[1] - 10),
+				cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+                        
+
+            
+
+
 
 
 
@@ -122,7 +151,7 @@ def main():
         totalFrames += 1
         fps.update()
         cv2.imshow("Frame", frame)
-        print("Total frame: ", totalFrames)
+        # print("Total frame: ", totalFrames)
 
 
         if cv2.waitKey(1) & 0xFF == ord('q'):
