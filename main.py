@@ -1,13 +1,15 @@
 import cv2
-
 import dlib
+
 import numpy as np
+import time
 
 import imutils
 from imutils.video import FPS
 from vidgear.gears import CamGear
 from mylib.centroidtracker import CentroidTracker
 from mylib.trackableobject import TrackableObject
+from mylib.regularMethod import getFPS, putText
 
 #import các biến từ file config.py
 from mylib.config import args
@@ -15,27 +17,31 @@ from mylib.config import LABELNAME
 
 #duong link video
 src = "https://youtu.be/d0mcaxedv_4"
+# src = "https://youtu.be/Y4XJx6aRH0I"
 stream_mode = True   #True nếu muốn lấy video từ internet, False nếu muốn lấy video từ local
 
 def main():
-    totalFrames = 0
+    #khởi tạo đối tượng FPS để đo tốc độ xử lý
+    fps = FPS().start()
     # lưu trữ kích thước khung hình, lấy từ frame đầu tiên
     H = 0
     W = 0
+    totalFrames = 0
+    curr_FPS = 0
 
     # read cafe model from mobilenet_ssd folder using args
     net = cv2.dnn.readNetFromCaffe(args["prototxt"], args["model"])
 
-    # list of trackers for tracking process
+    # list này lưu thông tin các đối tượng để tracking
     trackers = []
     trackablObject={}
     # tạo đối tượng dùng để tracking
     ct = CentroidTracker(maxDisappeared=40, maxDistance=50)
 
-    #khởi tạo đối tượng FPS để đo tốc độ xử lý
-    fps = FPS().start()
+    
     vd = CamGear(source = src, stream_mode = stream_mode).start()
 
+    t_start = time.time()
 
     # vd = cv2.VideoCapture("https://youtu.be/T2-3J2hWjbk")
     while True:
@@ -43,8 +49,7 @@ def main():
         # thay đổi kích thước khung hình thành 500px. càng ít dữ liệu thì xử lý càng nhanh
         frame = imutils.resize(frame, width = 500)
         # chuyển đổi khung hình sang RGB
-        #vì dlib cần RGB để xử lý
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB) #vì dlib cần RGB để xử lý
 
         # lấy kích thước khung hình từ frame đầu tiên
         if W == 0 or H == 0:
@@ -55,8 +60,7 @@ def main():
 
         # nhận diện vật thể
         if totalFrames % args["skip_frames"] == 0:
-            print(1)
-            trackers = [] # luư thông tin các đối tượng đã tracking
+            trackers.clear()  # làm mới danh sách
 
             # tạo blob từ frame để truyền vào Net để nhận diện object
             blob = cv2.dnn.blobFromImage(frame, 0.007843, (W, H), 127.5)
@@ -85,12 +89,13 @@ def main():
 
                     # thêm tracker vào danh sách trackers
                     trackers.append(tracker)
-
+            
+            t_current = time.time()
+            curr_FPS = getFPS(t_current - t_start, totalFrames)
             #bỏ qua frame đầu, không cần vẽ bounding box
 
         #tracking các vật thể
         else:
-            print(222222222222)
             # lặp qua các tracker
             for tracker in trackers:
                 # cập nhật tracker và lấy tọa độ bounding box mới
@@ -103,16 +108,19 @@ def main():
                 endX = int(pos.right())
                 endY = int(pos.bottom())
 
+                rects.append((startX, startY, endX, endY))
                 # vẽ bounding box
                 cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
+            
 
-                rects.append((startX, startY, endX, endY))
+            putText(frame, "FPS: "+curr_FPS, (10, 30))
+            putText(frame, "Total Frames: "+str(totalFrames), (10, 60))
+
 
         objects = ct.update(rects)
 
-        #lap qua cac doi tuong tracking
+        #lap qua cac doi tuong được tracking
         for(objectID, centroid) in objects.items():
-
             to = trackablObject.get(objectID, None)
 
             if to is None:
@@ -132,11 +140,8 @@ def main():
             
 
             trackablObject[objectID] = to
-
-            text = "ID {}".format(objectID)
-
-            cv2.putText(frame, text, (centroid[0] - 10, centroid[1] - 10),
-				cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 2)
+            
+            putText(frame, "ID {}".format(objectID), (centroid[0]-10, centroid[1]-10))
                         
 
             
@@ -150,11 +155,10 @@ def main():
 
         totalFrames += 1
         fps.update()
+
         cv2.imshow("Frame", frame)
-        # print("Total frame: ", totalFrames)
 
-
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == 27:
             break
 
 
