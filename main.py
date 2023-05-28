@@ -1,5 +1,4 @@
-import cv2
-import dlib
+import cv2, dlib
 
 import numpy as np
 import time
@@ -12,39 +11,45 @@ from mylib.trackableobject import TrackableObject
 from mylib.regularMethod import getFPS, putText
 
 #import các biến từ file config.py
-from mylib.config import args
-from mylib.config import LABELNAME
+from mylib.config import args, LABELNAME
 
 #duong link video
 src = "https://youtu.be/d0mcaxedv_4"
 # src = "https://youtu.be/Y4XJx6aRH0I"
+# src = "https://youtu.be/EBb3XWr-LK4"
+src = "https://www.youtube.com/live/_5pLLRT5FuM?feature=share"
 stream_mode = True   #True nếu muốn lấy video từ internet, False nếu muốn lấy video từ local
 
 def main():
-    #khởi tạo đối tượng FPS để đo tốc độ xử lý
-    fps = FPS().start()
+    
     # lưu trữ kích thước khung hình, lấy từ frame đầu tiên
     H = 0
     W = 0
     totalFrames = 0
+    totalUP = 0
+    totalDOWN = 0
+    currPeople = 0
     curr_FPS = 0
 
     # read cafe model from mobilenet_ssd folder using args
     net = cv2.dnn.readNetFromCaffe(args["prototxt"], args["model"])
+    # tạo đối tượng dùng để tracking
+    ct = CentroidTracker(maxDisappeared=10, maxDistance=50)
 
     # list này lưu thông tin các đối tượng để tracking
     trackers = []
     trackablObject={}
-    # tạo đối tượng dùng để tracking
-    ct = CentroidTracker(maxDisappeared=40, maxDistance=50)
 
     
     vd = CamGear(source = src, stream_mode = stream_mode).start()
-
+    #khởi tạo đối tượng FPS để đo tốc độ xử lý
+    fps = FPS().start()
     t_start = time.time()
 
     # vd = cv2.VideoCapture("https://youtu.be/T2-3J2hWjbk")
     while True:
+        currPeople = 0
+
         frame = vd.read()
         # thay đổi kích thước khung hình thành 500px. càng ít dữ liệu thì xử lý càng nhanh
         frame = imutils.resize(frame, width = 500)
@@ -90,12 +95,12 @@ def main():
                     # thêm tracker vào danh sách trackers
                     trackers.append(tracker)
             
-            t_current = time.time()
-            curr_FPS = getFPS(t_current - t_start, totalFrames)
+            
             #bỏ qua frame đầu, không cần vẽ bounding box
 
         #tracking các vật thể
         else:
+            currPeople = trackers.__len__()
             # lặp qua các tracker
             for tracker in trackers:
                 # cập nhật tracker và lấy tọa độ bounding box mới
@@ -113,10 +118,10 @@ def main():
                 cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
             
 
-            putText(frame, "FPS: "+curr_FPS, (10, 30))
-            putText(frame, "Total Frames: "+str(totalFrames), (10, 60))
+        
 
 
+        cv2.line(frame, (0, H // 2), (W, H // 2), (0, 0, 0), 3)
         objects = ct.update(rects)
 
         #lap qua cac doi tuong được tracking
@@ -133,32 +138,33 @@ def main():
 
                 if not to.counted:
                     if direction < 0 and centroid[1] < H // 2:
+                        totalUP+=1
                         to.counted = True
 
                     elif direction > 0 and centroid[1] > H // 2:
+                        totalDOWN+=1
                         to.counted = True
-            
 
             trackablObject[objectID] = to
             
-            putText(frame, "ID {}".format(objectID), (centroid[0]-10, centroid[1]-10))
-                        
 
-            
-
-
-
-
-
-
+        t_current = time.time()
+        curr_FPS = getFPS(t_current - t_start, totalFrames)
 
 
         totalFrames += 1
+        putText(frame, "FPS: " + curr_FPS, (10, 30))
+        putText(frame, "Total Frames: "+str(totalFrames), (10, 60))
+        putText(frame, "Total People: "+str(currPeople), (10, H-10))
+        putText(frame, "DOWN {}".format(totalDOWN), (10,90))
+        putText(frame, "UP {}".format(totalUP), (10,120))
+
+        
         fps.update()
 
         cv2.imshow("Frame", frame)
 
-        if cv2.waitKey(1) & 0xFF == 27:
+        if cv2.waitKey(10) & 0xFF == 27:
             break
 
 
