@@ -13,23 +13,22 @@ from module.tracking_object import TrackingObject
 from mylib.config import args
 
 #duong link video
-src = "https://youtu.be/d0mcaxedv_4"
-# src = "https://youtu.be/Y4XJx6aRH0I"
-# src = "https://youtu.be/EBb3XWr-LK4"
-# src = "https://www.youtube.com/live/_5pLLRT5FuM?feature=share"
+
 src = "videos/vidu2.mp4"
-stream_mode = False   #True nếu muốn lấy video từ internet, False nếu muốn lấy video từ local
+src = "https://youtu.be/FanKlgWthvk"
+src = "https://www.youtube.com/live/_5pLLRT5FuM?feature=share"
+
+stream_mode = True   #True nếu muốn lấy video từ internet, False nếu muốn lấy video từ local
 
 LABELNAME = LABELS = open(args["label"]).read().strip().split("\n")
 
 def main():
-    
-    # lưu trữ kích thước khung hình, lấy từ frame đầu tiên
+    # height và width của khung hình
     H = 0
     W = 0
     totalFrames = 0
-    totalUP = 0
-    totalDOWN = 0
+    totalToLeft = 0
+    totalToRight = 0
     currPeople = 0
     curr_FPS = 0
 
@@ -39,74 +38,83 @@ def main():
     # read cafe model from mobilenet_ssd folder using args
     net = cv2.dnn.readNetFromCaffe(args["prototxt"], args["model"])
     # tạo đối tượng dùng để tracking
-    ct = CentroidTracker(maxDisappeared=10, maxDistance=50)
+    ct = CentroidTracker(maxDisappeared=10, maxDistance=10)
 
     # list này lưu thông tin các đối tượng để tracking
     trackers = []
     trackablObject={}
 
     
-    vd = CamGear(source = src, stream_mode = stream_mode).start()
+
+    if args["stream"] == "true" or args["stream"] == "True":
+        vd = CamGear(source = src, stream_mode = stream_mode).start()
+        
+    else:
+        vd=CamGear().start()
+
+    
+
     #khởi tạo đối tượng FPS để đo tốc độ xử lý
     fps = FPS().start()
     t_start = time.time()
 
-    # vd = cv2.VideoCapture("https://youtu.be/T2-3J2hWjbk")
     while True:
         currPeople = 0
 
         frame = vd.read()
         frame = imutils.resize(frame, width = 500)# thay đổi kích thước khung hình thành 500px. càng ít dữ liệu thì xử lý càng nhanh
+        frame = cv2.flip(frame,1)
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  #vì dlib cần RGB để xử lý
 
         if W == 0 or H == 0:
             (H, W) = frame.shape[:2]
 
+
+        status = "Waiting"
+
         # nhận diện vật thể
         if totalFrames % args["skip_frames"] == 0:
-            trackers.clear()  # làm mới danh sách
-
+            cv2.circle(frame, (W - 10, 10), 7, (0, 0, 255), thickness=7)
+            status = "Detecting"
             # nhận diện vật thể
-            trackers = DetectPeople(frame, net, args, trackers, W, H, rgb, LABELNAME)
+            trackers = DetectPeople(frame, net, args, W, H, rgb, LABELNAME)
 
         #tracking các vật thể
         else:
-            rects = TrackingObject(trackers, rgb, frame)
+            if len(trackers) != 0:
+                status = "Tracking"
+                rects = TrackingObject(trackers, rgb)
 
-            for rect in rects:
-                startX, startY, endX, endY = rect
-                cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
-            
+                for rect in rects:
+                    startX, startY, endX, endY = rect
+                    cv2.rectangle(frame, (startX, startY), (endX, endY), (0, 255, 0), 2)
+                    cv2.circle(frame, (int((startX + endX)/2), int((startY+endY)/2)), 4, (0, 255, 0), -1)
 
-
-        cv2.line(frame, (0, H // 2), (W, H // 2), (0, 0, 0), 3)
+        cv2.line(frame, (W//2, 0), (W//2, H), (0, 0, 0), 3)
 
         # xác định hướng di chuyển của các vật thể
         objects = ct.update(rects)
-        UP, DOWN = DetectDirection(objects, trackablObject, H)
+        toLeft, toRight, trackablObject = DetectDirection(objects, trackablObject, W)
 
-        totalUP += UP
-        totalDOWN += DOWN
-            
 
+        totalToLeft += toLeft
+        totalToRight += toRight
         t_current = time.time()
-        curr_FPS = getFPS(t_current - t_start, totalFrames)
-
-        currPeople = trackers.__len__()
-
         totalFrames += 1
+        curr_FPS = getFPS(t_current - t_start, totalFrames)
+        currPeople = len(trackers)
+
         putText(frame, "FPS: " + curr_FPS, (10, 30))
         putText(frame, "Total Frames: "+str(totalFrames), (10, 60))
         putText(frame, "Total People: "+str(currPeople), (10, H-10))
-        putText(frame, "DOWN {}".format(totalDOWN), (10,90))
-        putText(frame, "UP {}".format(totalUP), (10,120))
-
+        putText(frame, "To Left {}".format(totalToLeft), (10,90))
+        putText(frame, "To Right {}".format(totalToRight), (10,120))
+        putText(frame, "Status: {}".format(status), (10,H-40))
         
         fps.update()
 
         cv2.imshow("Frame", frame)
-
-        if cv2.waitKey(50) & 0xFF == 27:
+        if cv2.waitKey(1) & 0xFF == 27:
             break
 
 

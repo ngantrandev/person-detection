@@ -1,7 +1,4 @@
-import cv2
-
-
-def TrackingObject(trackers, rgb, frame):
+def TrackingObject(trackers, rgb):
     rects = []  # lưu tọa độ bounding box của các vật thể
 
     # lặp qua các tracker

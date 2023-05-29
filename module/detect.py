@@ -2,7 +2,10 @@ import numpy as np
 import cv2, dlib
 from mylib.trackableobject import TrackableObject
 
-def DetectPeople(frame, net, args, trackers, W, H, rgb, LABELNAME):
+def DetectPeople(frame, net, args, W, H, rgb, LABELNAME):
+
+    trackers = []
+
     # tạo blob từ frame để truyền vào Net để nhận diện object
     blob = cv2.dnn.blobFromImage(frame, 0.007843, (W, H), 127.5)
     net.setInput(blob)
@@ -11,10 +14,10 @@ def DetectPeople(frame, net, args, trackers, W, H, rgb, LABELNAME):
     # lặp qua các detections
     for i in np.arange(0, detections.shape[2]):
         confidence = detections[0, 0, i, 2]
+
         # lọc các detections có confidence lớn hơn confidence nhỏ nhất
         if confidence > args["confidence"]:
             index = int(detections[0, 0, i, 1])
-
             # lọc các detections có label là person
             if LABELNAME[index] != "person":
                 continue
@@ -34,10 +37,9 @@ def DetectPeople(frame, net, args, trackers, W, H, rgb, LABELNAME):
     return trackers
 
 
-def DetectDirection(objects, trackablObject, H):
-
-    UP = 0
-    DOWN = 0
+def DetectDirection(objects, trackablObject, W):
+    toRight = 0
+    toLeft = 0
     #lap qua cac doi tuong được tracking
     for(objectID, centroid) in objects.items():
         to = trackablObject.get(objectID, None)
@@ -46,19 +48,34 @@ def DetectDirection(objects, trackablObject, H):
             to = TrackableObject(objectID, centroid)
 
         else:
-            y = [c[1] for c in to.centroids]
-            direction = centroid[1] - np.mean(y)
-            to.centroids.append(centroid)
 
-            if not to.counted:
-                if direction < 0 and centroid[1] < H // 2:
-                    UP+=1
-                    to.counted = True
+            if to.counted:
+                continue
 
-                elif direction > 0 and centroid[1] > H // 2:
-                    DOWN+=1
-                    to.counted = True
+            if len(to.centroids) <= 10:
+                for c in to.centroids:
+                    dX = centroid[0] - c[0]
+
+                    # khoảng cách quá nhỏ thì bỏ qua
+                    if np.abs(dX) < 5:
+                        continue
+
+                    #xác định hướng di chuyển
+                    if((c[0] < W // 2) and (centroid[0] > W // 2)):
+                        toRight+=1
+                        to.counted = True
+                        break
+                        
+                    elif((c[0] > W // 2) and (centroid[0] < W // 2)):
+                        toLeft+=1
+                        to.counted = True
+                        break
+
+                if len(to.centroids) == 10:
+                    to.centroids.popleft()  
+                to.centroids.append(centroid)
 
         trackablObject[objectID] = to
 
-    return UP, DOWN
+
+    return toLeft, toRight, trackablObject
