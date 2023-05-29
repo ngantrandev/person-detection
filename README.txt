@@ -15,3 +15,4 @@ Nếu muốn chỉ định model, chế độ stream( lấy video local hay inte
 
 Ví dụ chọn model có đường dẫn mobidelnet_ssd/model.caffemodel thì thực hiện:
                             python main.py --model mobidelnet_ssd/model.caffemodel
+                            Chi tiết cú pháp đối số dòng lệnh có thể xem trong file /mylib/config.py
