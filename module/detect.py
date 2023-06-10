@@ -57,7 +57,7 @@ def DetectDirection(objects, trackablObject, W):
                     dX = centroid[0] - c[0]
 
                     # khoảng cách quá nhỏ thì bỏ qua
-                    if np.abs(dX) < 5:
+                    if np.abs(dX) < 10:
                         continue
 
                     #xác định hướng di chuyển
